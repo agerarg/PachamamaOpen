@@ -206,6 +206,21 @@ public class Pilar : MonoBehaviour
         return true;
     }
 
+    /// <summary>
+    /// Baja el pilar según el progreso de excavación (0 = entero, 1 = abajo del todo).
+    /// Lo llama el Worker cada frame mientras pica, así llega abajo justo con el último golpe.
+    /// Sólo baja, nunca sube (por si dos workers lo pican a la vez).
+    /// </summary>
+    public void MostrarProgresoExcavacion(float progreso)
+    {
+        if (eliminado) return;
+        float y = alturaInicial - alto * Mathf.Clamp01(progreso);
+        Vector3 pos = transform.position;
+        if (y >= pos.y) return;
+        pos.y = y;
+        transform.position = pos;
+    }
+
     /// <summary>Lleva el pilar directo a su altura final (por ejemplo si el worker que lo hundía desaparece).</summary>
     public void TerminarHundimiento()
     {

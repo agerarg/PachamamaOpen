@@ -13,6 +13,8 @@ public class ResourceManager : MonoBehaviour
     public TextMeshProUGUI workerTextDisplayCount;
     public TextMeshProUGUI workerTextCostCreation;
     public TextMeshProUGUI bonesTextDisplayCount;
+    public TextMeshProUGUI toxicWhaterDisplayCount;
+    public TextMeshProUGUI costoDeLimpiarRoxinasDisplay;
 
     public Transform workersHolder;
     public Transform goldHolder;
@@ -20,7 +22,17 @@ public class ResourceManager : MonoBehaviour
     public static Action<int> GoldHasChange;
     public static Action<int> WorkersHasChange;
     public static Action<float> WorkerSpeedHasChange;
+    public static Action GoldHasCleaned;
+    public static Action<int> PlayerHasNoGold;
+    public static Action<Material> WhaterHasChange;
+    public static Action WorkerIsDead;
 
+    public Material whaterIn0;
+    public Material whaterIn20;
+    public Material whaterIn40;
+    public Material whaterIn60;
+    public Material whaterIn80;
+    public Material whaterIn100;
     public static ResourceManager Instance { get; private set; }
 
     public GameObject goldPrefab;
@@ -37,8 +49,22 @@ public class ResourceManager : MonoBehaviour
     [Header("Pila de oro")]
     [Tooltip("Lugar donde los workers juntan el oro.")]
     public Vector3 puntoDeEntrega = Vector3.zero;
+    [Tooltip("Segundos que tarda un worker en lavar el oro en el agua (similar a picar una piedra).")]
+    public float segundosLavadoOro = 3f;
+    [Tooltip("Material del oro cuando el worker lo carga (sucio, antes de lavarlo).")]
+    public Material materialOroSucio;
+    [Tooltip("Material del oro ya lavado. Si queda vacío se usa el material del goldPrefab.")]
+    public Material materialOroLimpio;
     [Tooltip("Máximo de objetos de oro en la pila. Por encima de esto el oro sólo suma al número (para no laguear).")]
     public int maxObjetosOro = 1000;
+
+    [Header("Multiplicar oro (perk)")]
+    [Tooltip("Tiempo máximo que tarda en crear todo el oro del perk de multiplicar.")]
+    public float duracionMaxMultiplicar = 2f;
+    [Tooltip("Pausa entre cada oro cuando es poco oro (con mucho oro va más rápido para no pasarse del tiempo máximo).")]
+    public float intervaloMaxMultiplicar = 0.08f;
+    [Tooltip("Separación mínima entre sonidos de oro mientras se multiplica.")]
+    public float intervaloMinSonidoOro = 0.05f;
 
     [Header("Regeneración de pilares")]
     [Tooltip("Hasta esta distancia al centro, los pilares tardan 'segundosRegeneracionCerca' en volver.")]
@@ -66,6 +92,10 @@ public class ResourceManager : MonoBehaviour
     /// <summary>Oro total entregado en la pila.</summary>
     public int Oro { get; private set; }
     private int workersCount = 1;
+    public float toxicWaterCount = 0;
+    public float workerToxicAdd = 1f;
+
+    public int costoDeLimpiarRoxinas = 10;
     // Objetos de oro que están en la pila, en el orden en que llegaron (los últimos quedan arriba)
     private readonly List<GameObject> oroEnPila = new List<GameObject>();
     /// <summary>Se dispara cada vez que cambia el oro (para la UI, etc.).</summary>
@@ -100,11 +130,57 @@ public class ResourceManager : MonoBehaviour
     private void OnEnable()
     {
         Pilar.HuesoEncontrado += OnBoneFound;
+        GoldHasCleaned += OnGoldCleanded;
+        WorkerIsDead += OnWokerDied;
+
     }
     private void OnDisable()
     {
         Pilar.HuesoEncontrado -= OnBoneFound;
+        GoldHasCleaned -= OnGoldCleanded;
+        WorkerIsDead -= OnWokerDied;
 
+    }
+
+    private void OnWokerDied()
+    {
+        workersCount--;
+        workerTextDisplayCount.SetText(workersCount.ToString());
+        WorkersHasChange?.Invoke(workersCount);
+    }
+
+    private void OnGoldCleanded()
+    {
+        toxicWaterCount = Mathf.Min(toxicWaterCount + workerToxicAdd, 100f);
+        toxicWhaterDisplayCount.SetText(toxicWaterCount.ToString("F2") + "%");
+        ActualizarMaterialAgua();
+    }
+
+    // ---------- Material del agua según la contaminación ----------
+
+    private Material materialAguaActual;
+
+    /// <summary>Material que tiene que tener el agua ahora (lo usa cada Whater al aparecer).</summary>
+    public Material MaterialAguaActual => materialAguaActual != null ? materialAguaActual : MaterialAguaPara(toxicWaterCount);
+
+    // 0-19 → whaterIn0, 20-39 → whaterIn20, 40-59 → whaterIn40, ... 100 → whaterIn100.
+    // Si el material de ese nivel no está asignado, usa el del nivel anterior.
+    private Material MaterialAguaPara(float toxinas)
+    {
+        Material[] niveles = { whaterIn0, whaterIn20, whaterIn40, whaterIn60, whaterIn80, whaterIn100 };
+        int nivel = Mathf.Clamp(Mathf.FloorToInt(toxinas / 20f), 0, niveles.Length - 1);
+        for (int i = nivel; i >= 0; i--)
+            if (niveles[i] != null) return niveles[i];
+        return null;
+    }
+
+    // Avisa a toda el agua sólo cuando cambia de nivel (no en cada lavado)
+    private void ActualizarMaterialAgua()
+    {
+        Material m = MaterialAguaPara(toxicWaterCount);
+        if (m == null || m == materialAguaActual) return;
+        materialAguaActual = m;
+        WhaterHasChange?.Invoke(m);
     }
 
     private void OnBoneFound(Pilar pilar)
@@ -208,6 +284,17 @@ public class ResourceManager : MonoBehaviour
         return UnityEngine.Random.Range(oroMinimo, Mathf.Max(oroMinimo, oroMaximo) + 1);
     }
 
+    /// <summary>Material del oro limpio (el asignado, o el del goldPrefab si no hay).</summary>
+    public Material MaterialOroLimpio
+    {
+        get
+        {
+            if (materialOroLimpio != null) return materialOroLimpio;
+            var r = goldPrefab != null ? goldPrefab.GetComponentInChildren<Renderer>() : null;
+            return r != null ? r.sharedMaterial : null;
+        }
+    }
+
     /// <summary>Instancia un objeto de oro en la posición dada.</summary>
     public GameObject CrearOro(Vector3 posicion)
     {
@@ -230,6 +317,7 @@ public class ResourceManager : MonoBehaviour
         }
         Oro++;
         OroCambiado?.Invoke(Oro);
+        AudioMaster.Instance.TriggerSound(AudioMaster.SoundType.goldGain, puntoDeEntrega);
         UpdateGold();
     }
     /// <summary>
@@ -245,25 +333,63 @@ public class ResourceManager : MonoBehaviour
         }
 
         int extra = Oro * (val - 1);
-        Oro += extra;
+        if (extra <= 0) return;
+        StartCoroutine(MultiplicarOroGradual(extra));
+    }
 
-        int objetosACrear = Mathf.Clamp(maxObjetosOro - CantidadObjetosEnPila(), 0, extra);
+    // Va creando el oro de a poco (y subiendo el número) para que sea un momento de "lluvia de oro".
+    // Nunca tarda más de 'duracionMaxMultiplicar': con mucho oro crea varios por frame.
+    private System.Collections.IEnumerator MultiplicarOroGradual(int extra)
+    {
+        int objetos = Mathf.Clamp(maxObjetosOro - oroEnPila.Count, 0, extra);
+        int pasos = Mathf.Max(1, objetos);
+        float intervalo = Mathf.Min(intervaloMaxMultiplicar, duracionMaxMultiplicar / pasos);
+
+        int agregado = 0;
+        int i = 0;
+        float t = 0f;
+        float ultimoSonido = -999f;
         float alturaBase = AlturaArribaDeLaPila();
 
-        for (int i = 0; i < objetosACrear; i++)
+        while (true)
         {
-            // Caen desde arriba de la pila, escalonados para que no aparezcan uno dentro del otro
-            Vector2 r = UnityEngine.Random.insideUnitCircle * 0.8f;
-            Vector3 pos = puntoDeEntrega + new Vector3(r.x, 0f, r.y);
-            pos.y = alturaBase + 1f + i * 0.35f;
+            // Cuántos pasos tendrían que haberse hecho a esta altura del tiempo
+            int hasta = Mathf.Min(pasos, Mathf.FloorToInt(t / intervalo) + 1);
+            int antes = i;
+            for (; i < hasta; i++)
+            {
+                if (i < objetos && oroEnPila.Count < maxObjetosOro)
+                {
+                    if (i % 20 == 0) alturaBase = AlturaArribaDeLaPila();
+                    Vector2 r = UnityEngine.Random.insideUnitCircle * 0.8f;
+                    Vector3 pos = puntoDeEntrega + new Vector3(r.x, alturaBase + 2f, r.y);
+                    GameObject oro = CrearOro(pos);
+                    if (oro != null) oroEnPila.Add(oro);
+                }
 
-            GameObject oro = CrearOro(pos);
-            if (oro == null) break;
-            oroEnPila.Add(oro);
+                // El número sube junto con los objetos (repartido, por si hay más oro que objetos)
+                int deberia = Mathf.RoundToInt(extra * (i + 1f) / pasos);
+                Oro += deberia - agregado;
+                agregado = deberia;
+            }
+
+            if (i > antes) // sólo si en este frame apareció oro
+            {
+                OroCambiado?.Invoke(Oro);
+                UpdateGold();
+
+                // Sonido con separación mínima (si no, cientos a la vez son ruido)
+                if (Time.unscaledTime - ultimoSonido >= intervaloMinSonidoOro && AudioMaster.Instance != null)
+                {
+                    ultimoSonido = Time.unscaledTime;
+                    AudioMaster.Instance.TriggerSound(AudioMaster.SoundType.goldGain, puntoDeEntrega);
+                }
+            }
+
+            if (i >= pasos) break;
+            yield return null;
+            t += Time.unscaledDeltaTime; // tiempo real: funciona aunque el juego esté pausado
         }
-
-        OroCambiado?.Invoke(Oro);
-        UpdateGold();
     }
 
     // Objetos de oro que siguen existiendo en la pila (limpia los que se destruyeron por otro lado)
@@ -327,7 +453,46 @@ public class ResourceManager : MonoBehaviour
 
         OroCambiado?.Invoke(Oro);
         UpdateGold();
+        AudioMaster.Instance.TriggerSound(AudioMaster.SoundType.goldSpend, puntoDeEntrega);
         return true;
+    }
+    public void ReduceToxicidadPerLavado()
+    {
+        workerToxicAdd = Mathf.Max(0f, workerToxicAdd - 0.1f);
+    }
+    public void ReduceToxicidad()
+            {
+        toxicWaterCount = Mathf.Max(0f, toxicWaterCount - 20f);
+        toxicWhaterDisplayCount.SetText(toxicWaterCount.ToString("F2") + "%");
+        ActualizarMaterialAgua();
+        costoDeLimpiarRoxinas = Mathf.RoundToInt(costoDeLimpiarRoxinas * 1.3f) + 5;
+
+        costoDeLimpiarRoxinasDisplay.SetText("Reducir 20% la toxicidad del agua por "+ costoDeLimpiarRoxinas + " oro");
+    }
+
+    public void ReduceToxixidadButton()
+    {
+               if (costoDeLimpiarRoxinas <= Oro)
+        {
+            SustractGold(costoDeLimpiarRoxinas);
+            ReduceToxicidad();
+        }
+        else
+        {
+            PlayerHasNoGold?.Invoke(costoDeLimpiarRoxinas);
+        }
+    }
+
+    public void SpownTrabajador()
+    {
+        Instantiate(workerPrefab, new Vector3(0, 0, 0), Quaternion.identity, workersHolder);
+        workersCount++;
+        workerTextDisplayCount.SetText(workersCount.ToString());
+        CostoDeTrabajador = Mathf.RoundToInt(CostoDeTrabajador * 1.5f) + 2;
+        UpdateCost();
+        UpdateGold();
+        WorkersHasChange?.Invoke(workersCount);
+        AudioMaster.Instance.TriggerSound(AudioMaster.SoundType.workerPop, puntoDeEntrega);
     }
     public void SpownWorker()
     {
@@ -338,15 +503,13 @@ public class ResourceManager : MonoBehaviour
         }
 
         if (CostoDeTrabajador <= Oro)
-        { 
-            Instantiate(workerPrefab, new Vector3(0, 0, 0), Quaternion.identity, workersHolder);
-            workersCount++;
-            workerTextDisplayCount.SetText(workersCount.ToString());
+        {
             SustractGold(CostoDeTrabajador);
-             CostoDeTrabajador = Mathf.RoundToInt(CostoDeTrabajador * 1.5f)+2;
-            UpdateCost();
-            UpdateGold();
-            WorkersHasChange?.Invoke(workersCount);
+            SpownTrabajador();
+        }
+        else
+        {
+            PlayerHasNoGold?.Invoke(CostoDeTrabajador);
         }
     }
 }

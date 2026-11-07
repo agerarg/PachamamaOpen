@@ -35,6 +35,11 @@ public class CamaraRTS : MonoBehaviour
     [Tooltip("Altura del piso: la cámara gira alrededor del punto del piso que está mirando.")]
     [SerializeField] private float alturaPiso = 0f;
 
+    [Header("Rotación con Q / E")]
+    [SerializeField] private bool rotarConTeclado = true;
+    [Tooltip("Grados por segundo al mantener Q o E.")]
+    [SerializeField] private float velocidadRotacionTeclado = 90f;
+
     [Header("Zoom")]
     [SerializeField] private float velocidadZoom = 2f;
     [SerializeField] private float alturaMinima = 5f;
@@ -61,6 +66,7 @@ public class CamaraRTS : MonoBehaviour
     {
         bool arrastrando = Arrastrar();
         bool rotando = Rotar();
+        RotarConTeclado();
         Mover(arrastrando || rotando);
         Zoom();
     }
@@ -128,6 +134,21 @@ public class CamaraRTS : MonoBehaviour
         alturaObjetivo = Mathf.Clamp(transform.position.y, alturaMinima, alturaMaxima);
         transform.position = Limitar(transform.position);
         return true;
+    }
+
+    // Q gira a la izquierda y E a la derecha, alrededor del punto del piso que mira la cámara
+    private void RotarConTeclado()
+    {
+        var teclado = Keyboard.current;
+        if (!rotarConTeclado || teclado == null) return;
+
+        float dir = 0f;
+        if (teclado.qKey.isPressed) dir -= 1f;
+        if (teclado.eKey.isPressed) dir += 1f;
+        if (dir == 0f) return;
+
+        transform.RotateAround(PuntoMirado(), Vector3.up, dir * velocidadRotacionTeclado * Time.deltaTime);
+        transform.position = Limitar(transform.position);
     }
 
     // Punto del piso en el centro de la pantalla

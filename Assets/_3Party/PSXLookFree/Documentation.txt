@@ -1,0 +1,26 @@
+PSX Look Free
+
+Documentation. The PS1 look for URP: vertices snapped to the pixel grid, affine (warping) texture
+mapping, point-sampled textures and lighting per vertex, on a low-resolution screen.
+
+  Resources/PSX Look Free/   the shaders, one per material kind: Lit
+  Scripts/PSX.cs         PSX.Convert(level) swaps every material under level for its PSX one; PSX.Make
+                         makes one; PSX.SetFloat sets a property on all of them
+  Scripts/PSXScreen.cs   on the camera: draws it at 240 lines (or any), scaled up in square pixels
+  Demo/PSXLookFreeDemo.unity   a small level in URP's own Lit materials, converted on Play, with a
+                         switch for every part of the look; its code and art are in Scripts/Demo/ and DemoArt/
+
+Use: add PSXScreen to the camera and call PSX.Convert(level) on the level's root (or give its
+renderers materials of the "PSX Look Free/..." shaders yourself). Keep UI on a Screen Space - Overlay canvas
+to keep it sharp. Convert maps URP's Unlit to unlit, alpha clipping to cutout, a transparent
+surface to transparent and metallic over 0.5 to chrome; kinds this package lacks become lit.
+
+Every material: Texture, Color, UV Scroll (per second), Vertex Snap (the grid in screen pixels, 0
+is off), Affine Textures (1 is the PS1's warp, 0 perspective-correct), Vertex Colors.
+
+Affine mapping warps more the bigger a polygon is on screen: cut large floors and walls into
+smaller quads, as PS1 games did. Lighting is per vertex (ambient, the main light and the 8 point
+and spot lights nearest the camera, which PSXLights hands the shaders), so the same goes for lights.
+Fog is URP's own (Lighting > Environment): linear fog with a near end gives the PS1's draw distance.
+
+Needs Unity 6.3 or later with URP and a Universal Renderer (Forward, Forward+ or Deferred).

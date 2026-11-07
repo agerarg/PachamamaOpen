@@ -171,7 +171,7 @@ NavMeshAgent:
   m_Height: 2
   m_BaseOffset: 0
   m_WalkableMask: 4294967295
-  m_ObstacleAvoidanceType: 4
+  m_ObstacleAvoidanceType: 0
 --- !u!54 &4548430878094166695
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -239,7 +239,9 @@ MonoBehaviour:
   danioPorGolpe: 1
   intervaloGolpe: 1
   tiempoMaximoTrabado: 2
-  cooldownAlTerminar: 3
+  candidatosPorBusqueda: 5
+  segundosOlvidarInalcanzable: 5
+  cooldownAlTerminar: 1
   puntoDeCarga: {x: 0, y: 1.3, z: 0}
   separacionCarga: 0.32
   distanciaEntrega: 2
@@ -248,5 +250,6 @@ MonoBehaviour:
   duracionTiro: 0.5
   intervaloTiro: 0.2
   tiempoMaximoDescarga: 1.5
+  segundosMuerte: 2
   estado: 0
   objetivo: {fileID: 0}

@@ -1,0 +1,6 @@
+{
+    "name": "HeyHeyThere.PSXLookFree",
+    "rootNamespace": "HeyHeyThere.PSXLookFree",
+    "references": ["UnityEngine.UI"],
+    "autoReferenced": true
+}

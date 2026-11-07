@@ -28,10 +28,8 @@ public class Quest : MonoBehaviour
 
     private void OnHuesoEncontrado(Pilar pilar)
     {
-       if(ResourceManager.Instance.BonesCounter >= 5)
-        {
-                       quest3.sprite = questComplete;
-        }
+        if (ResourceManager.Instance.BonesCounter >= 5)
+            SetQuest(quest3, questComplete);
     }
 
     private void Start()
@@ -42,23 +40,27 @@ public class Quest : MonoBehaviour
         quest4.sprite = questIncomplete;
     }
 
+    // Cambia el sprite sólo si es distinto al actual, y suena una sola vez al cambiar
+    private void SetQuest(Image target, Sprite set)
+    {
+        if (target == null || target.sprite == set) return;
+
+        target.sprite = set;
+        if (AudioMaster.Instance != null)
+            AudioMaster.Instance.TriggerSound(AudioMaster.SoundType.questComplete, Vector3.zero);
+    }
+
     private void OnWorkersChange(int obj)
     {
         if (obj >= 5)
-            {
-            quest1.sprite = questComplete;
-        }
+            SetQuest(quest1, questComplete);
         if (obj >= 20)
-        {
-            quest4.sprite = questComplete;
-        }
+            SetQuest(quest4, questComplete);
     }
 
     private void OnGoldChange(int obj)
     {
         if (obj >= 500)
-        {
-            quest2.sprite = questComplete;
-        }
+            SetQuest(quest2, questComplete);
     }
 }

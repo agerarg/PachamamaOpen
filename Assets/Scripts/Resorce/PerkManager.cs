@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using UnityEngine;
 
 // Fuera de la clase para poder usarlo directo como PerkType desde cualquier script (PerkData, Perk, etc.)
-public enum PerkType { WorkerSpeed, WokerMaxGold, WorkerMinGold, GoldDoble }
+public enum PerkType { WorkerSpeed, WokerMaxGold, WorkerMinGold, GoldDoble, NewWorker, reduceToxixidad, reduceToxicPerLavado }
 
 public class PerkManager : MonoBehaviour
 {
@@ -33,6 +34,10 @@ public class PerkManager : MonoBehaviour
 
     private void PerkSelected(PerkData data)
     {
+        // Descontar el límite. PerkData es una clase, así que 'data' es el mismo objeto que está en perkDatas.
+        // -1 = sin límite; al llegar a 0 ya no se ofrece.
+        if (data.limite > 0) data.limite--;
+
         switch(data.perkType)
         {
             case PerkType.WorkerSpeed:
@@ -47,9 +52,21 @@ public class PerkManager : MonoBehaviour
             case PerkType.GoldDoble:
                                 ResourceManager.Instance.MutiplyGold(data.value);
                 break;
+            case PerkType.NewWorker:
+                int CostoDeTrabajador = ResourceManager.Instance.CostoDeTrabajador / 2;
+                ResourceManager.Instance.SustractGold(CostoDeTrabajador);
+                ResourceManager.Instance.SpownTrabajador();
+                break;
+            case PerkType.reduceToxixidad:
+                int costoDeLimpiarRoxinas = ResourceManager.Instance.costoDeLimpiarRoxinas / 2;
+                ResourceManager.Instance.SustractGold(costoDeLimpiarRoxinas);
+                ResourceManager.Instance.ReduceToxicidad();
+                break;
+            case PerkType.reduceToxicPerLavado:
+                ResourceManager.Instance.ReduceToxicidadPerLavado();
+                break;
         }
-
-
+        AudioMaster.Instance.TriggerSound(AudioMaster.SoundType.selectPerk, Vector3.zero);
         Time.timeScale = 1f; 
         perkWindow.SetActive(false);
     }
@@ -65,9 +82,13 @@ public class PerkManager : MonoBehaviour
         {
             Destroy(t.gameObject);
         }
+        AudioMaster.Instance.TriggerSound(AudioMaster.SoundType.showPerks, Vector3.zero);
 
-        // Copia de las opciones posibles (no tocamos perkDatas, para que sigan todas la próxima vez)
-        List<PerkData> disponibles = new List<PerkData>(perkDatas);
+        // Opciones posibles: todas las que no agotaron su límite (-1 = sin límite)
+        List<PerkData> disponibles = perkDatas.FindAll(d => d.limite != 0);
+
+        // Si ya no queda ningún perk para ofrecer, no abrir la ventana
+        if (disponibles.Count == 0) return;
 
         int cantidad = Mathf.Min(cantidadOpciones, disponibles.Count);
         for (int i = 0; i < cantidad; i++)
@@ -79,7 +100,20 @@ public class PerkManager : MonoBehaviour
 
             Perk perk = Instantiate(perkPrefab, perkHolder);
             perk.perkData = elegido;
-            perk.Setup();
+
+            int goldRec = 0;
+            switch(perk.perkData.perkType)
+            {
+                case PerkType.NewWorker:
+                    goldRec = ResourceManager.Instance.CostoDeTrabajador / 2;
+                break;
+                case PerkType.reduceToxixidad:
+                    goldRec = ResourceManager.Instance.costoDeLimpiarRoxinas / 2;
+
+                    break;
+            }
+
+            perk.Setup(goldRec);
         }
         Time.timeScale = 0f; // Pausar el juego mientras se elige un perk
         perkWindow.SetActive(true);
@@ -93,4 +127,6 @@ public class PerkData
     public PerkType perkType;
     public int value;
     public string description;
+    [Tooltip("Cuántas veces se puede elegir. -1 = sin límite. Al llegar a 0 ya no aparece como opción.")]
+    public int limite = -1;
 }
