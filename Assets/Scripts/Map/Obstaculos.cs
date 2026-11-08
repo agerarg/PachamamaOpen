@@ -29,7 +29,7 @@ public class Obstaculos : MonoBehaviour
         {
             for (int j = -tamano; j < tamano; j++)
             {
-                if(j==0 && i==0 || j == 1 && i == 0 || j == -1 && i == 0 || j == 0 && i == 1 || j == 0 && i == -1)
+                if(j==0 && i==0 || j == 1 && i == 0 || j == -1 && i == 0 || j == 0 && i == 1 || j == 0 && i == -1 || j == 1 && i == 1 || j == 1 && i == -1)
                     {
                     continue;
                 }

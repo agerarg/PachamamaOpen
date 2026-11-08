@@ -39,32 +39,6 @@ public class Pilar : MonoBehaviour
     /// <summary>Todos los pilares activos en la escena.</summary>
     public static readonly List<Pilar> Todos = new List<Pilar>();
 
-    // ---------- Cooldown global de huesos ----------
-    private static float huesosBloqueadosHasta = -1f;
-
-    /// <summary>True mientras no pueden aparecer ni encontrarse huesos.</summary>
-    public static bool HuesosEnCooldown => Time.time < huesosBloqueadosHasta;
-
-    /// <summary>Segundos que faltan para que vuelvan los huesos (0 si no hay cooldown).</summary>
-    public static float SegundosCooldownHuesos => Mathf.Max(0f, huesosBloqueadosHasta - Time.time);
-
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ReiniciarEstatico() { huesosBloqueadosHasta = -1f; }
-
-    // Se encontró un hueso: bloquear huesos por un rato y sacar los que ya estaban en los pilares
-    private static void IniciarCooldownHuesos()
-    {
-        float segundos = ResourceManager.Instance != null ? ResourceManager.Instance.cooldownHuesos : 30f;
-        huesosBloqueadosHasta = Time.time + segundos;
-
-        foreach (Pilar p in Todos)
-        {
-            if (!p.isHaveABone || p.huesoSuelto) continue; // los que ya se están excavando se cancelan en Eliminar
-            p.isHaveABone = false;
-            if (p.boneObj != null) p.boneObj.gameObject.SetActive(false);
-        }
-    }
-
     public float Vida { get; private set; }
     public bool Consumido { get; private set; }
 
@@ -134,7 +108,7 @@ public class Pilar : MonoBehaviour
     {
         excavacionIniciada = true;
         if (huesoSuelto) return;
-        isHaveABone = !HuesosEnCooldown && UnityEngine.Random.Range(0, 10) == 5;
+        isHaveABone = UnityEngine.Random.Range(0, 10) == 5;
         if (boneObj != null) boneObj.gameObject.SetActive(isHaveABone);
     }
 
@@ -253,27 +227,17 @@ public class Pilar : MonoBehaviour
         {
             isHaveABone = false;
 
-            if (HuesosEnCooldown)
-            {
-                // Se encontró otro hueso hace poco: este se pierde
-                if (huesoSuelto) RecuperarHueso();
-                else if (boneObj != null) boneObj.gameObject.SetActive(false);
-            }
-            else if (boneObj != null)
+            if (boneObj != null)
             {
                 SoltarHueso();
                 boneObj.Revelar(() =>
                 {
                     RecuperarHueso();
-                    // Si otro hueso se reveló al mismo tiempo y ya inició el cooldown, este no cuenta
-                    if (HuesosEnCooldown) return;
-                    IniciarCooldownHuesos();
                     HuesoEncontrado?.Invoke(this);
                 });
             }
             else
             {
-                IniciarCooldownHuesos();
                 HuesoEncontrado?.Invoke(this);
             }
         }

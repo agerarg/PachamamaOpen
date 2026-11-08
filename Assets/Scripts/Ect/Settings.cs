@@ -1,11 +1,13 @@
 using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class Settings : MonoBehaviour
 {
     public GameObject settingsPanel;
+    public GameObject mainMenu;
 
     public Slider sfxVolumeSlider;
     public Slider musicVolumeSlider;
@@ -40,7 +42,8 @@ public class Settings : MonoBehaviour
     {
         if (settingsPanel.activeSelf) return;
         settingsPanel.SetActive(true);
-
+        if(mainMenu != null)
+            mainMenu.SetActive(false);
         if (pausarAlAbrir)
         {
             AudioMaster.Instance.TriggerSound(AudioMaster.SoundType.settings, Vector3.zero);
@@ -61,11 +64,16 @@ public class Settings : MonoBehaviour
 
     public void VolverAlJuego()
     {
+        if (mainMenu != null)
+            mainMenu.SetActive(true);
         if (!settingsPanel.activeSelf) return;
         settingsPanel.SetActive(false);
         if (pausarAlAbrir) Time.timeScale = timeScaleAntes;
     }
-
+    public void VolverAlMenu()
+    {
+        SceneManager.LoadScene("Inicio");
+    }
     public void ExitGame()
     {
                Application.Quit();

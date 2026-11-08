@@ -8,6 +8,38 @@ public class Worker : MonoBehaviour
 {
     private enum Estado { Buscando, Yendo, Picando, Descansando, YendoAlAgua, Lavando, LlevandoOro, TirandoOro, Muerto }
 
+    public Animator animator;
+    //Animaciones 
+    // set bool WALK para caminar. 
+    // set bool CARRING para caminar llevando oro.
+    // trigger DEAD para morir.
+    // set bool MINING para picar piedra.
+    // set bool WASHINGGOLD para lavar oro.
+    // ninguno quedaria en IDLE. 
+    private static readonly int AnimWalk = Animator.StringToHash("WALK");
+    private static readonly int AnimCarring = Animator.StringToHash("CARRING");
+    private static readonly int AnimMining = Animator.StringToHash("MINING");
+    private static readonly int AnimWashingGold = Animator.StringToHash("WASHINGGOLD");
+    private static readonly int AnimDead = Animator.StringToHash("DEAD");
+    // Nombres de los estados en el Animator (para saltar directo sin pasar por IDLE)
+    private static readonly int EstadoIdle = Animator.StringToHash("IDLE");
+    private static readonly int EstadoWalk = Animator.StringToHash("WALK");
+    private static readonly int EstadoCarrying = Animator.StringToHash("CARRYING");
+    private static readonly int EstadoMining = Animator.StringToHash("MINING");
+    private static readonly int EstadoWashing = Animator.StringToHash("WASHING");
+    private static readonly int EstadoDead = Animator.StringToHash("DEAD");
+    private int estadoAnimActual;
+
+    [Tooltip("Dónde lleva el oro. Si está asignado, el oro se cuelga de este objeto (puede ser hijo de un hueso del modelo para seguir la animación). Si no, usa 'Punto De Carga'.")]
+    public Transform carryPlaceRef;
+
+    [Header("Animación y giro")]
+    [Tooltip("Segundos de mezcla al cambiar de animación (corto = responde al instante).")]
+    [SerializeField] private float duracionTransicionAnim = 0.1f;
+    [Tooltip("Grados por segundo que gira mientras camina (el NavMeshAgent venía en 120, muy lento).")]
+    [SerializeField] private float velocidadGiroCaminando = 720f;
+
+
     [Tooltip("Distancia máxima (en XZ) para buscar el punto de NavMesh más cercano al pilar.")]
     [SerializeField] private float sampleRadius = 5f;
 
@@ -30,7 +62,7 @@ public class Worker : MonoBehaviour
     [SerializeField] private float cooldownAlTerminar = 1f;
 
     [Header("Oro")]
-    [Tooltip("Dónde lleva el oro el worker, relativo a su posición (encima de la cabeza).")]
+    [Tooltip("Sólo si no hay 'Carry Place Ref': offset del oro relativo al worker (X = derecha, Y = altura, Z = adelante).")]
     [SerializeField] private Vector3 puntoDeCarga = new Vector3(0f, 1.3f, 0f);
     [Tooltip("Separación vertical entre los oros apilados que lleva.")]
     [SerializeField] private float separacionCarga = 0.32f;
@@ -46,10 +78,12 @@ public class Worker : MonoBehaviour
     [SerializeField] private float intervaloTiro = 0.2f;
     [Tooltip("Tiempo máximo para tirar toda la carga: si lleva mucho oro, tira más seguido para no pasarse de este tiempo (la fuerza del tiro no cambia).")]
     [SerializeField] private float tiempoMaximoDescarga = 1.5f;
+    [Tooltip("En cada descarga, sólo los primeros N oros suenan al caer (el resto cae en silencio).")]
+    [SerializeField] private int maxSonidosPorDescarga = 100;
 
     [Header("Muerte")]
-    [Tooltip("Segundos que queda quieto antes de desaparecer (para la animación de muerte más adelante).")]
-    [SerializeField] private float segundosMuerte = 2f;
+    [Tooltip("Segundos que queda tirado en el piso (con la animación de muerte) antes de desaparecer.")]
+    [SerializeField] private float segundosMuerte = 10f;
 
     [Header("Debug")]
     [SerializeField] private Estado estado = Estado.Buscando;
@@ -77,8 +111,11 @@ public class Worker : MonoBehaviour
     private readonly List<Pilar> hundiendo = new List<Pilar>();
 
     // Oro que lleva encima y oro que está volando hacia la pila (el worker los anima, no ellos)
-    private class OroEnVuelo { public GameObject obj; public Vector3 desde, hasta; public float t; }
+    private class OroEnVuelo { public GameObject obj; public Vector3 desde, hasta; public float t; public bool conSonido; }
+    private int tirosConSonido; // cuántos oros de la descarga actual ya sonaron
     private readonly List<GameObject> oroCargado = new List<GameObject>();
+    private Vector3 ultimoPuntoDeCarga;
+    private float ultimaSeparacionCarga;
     private readonly List<OroEnVuelo> oroEnVuelo = new List<OroEnVuelo>();
     private float timerTiro;
     private float intervaloActual;
@@ -87,6 +124,8 @@ public class Worker : MonoBehaviour
     {
         agent = GetComponent<NavMeshAgent>();
         camino = new NavMeshPath();
+        if (animator == null) animator = GetComponentInChildren<Animator>();
+        agent.angularSpeed = velocidadGiroCaminando;
 
         agent.speed = ResourceManager.Instance != null ? ResourceManager.Instance.workerSpeed : 3f;
     }
@@ -145,6 +184,8 @@ public class Worker : MonoBehaviour
 
         AnimarHundimientos();
         AnimarOroEnVuelo();
+        ReacomodarCargaSiCambio();
+        ActualizarAnimator();
 
 
       
@@ -296,6 +337,7 @@ public class Worker : MonoBehaviour
             timerGolpe = 0f;
             golpeSonado = false;
             estado = Estado.Picando;
+            MirarHacia(objetivo.transform.position);
             return;
         }
 
@@ -322,7 +364,7 @@ public class Worker : MonoBehaviour
         Vector3 dir = objetivo.transform.position - transform.position;
         dir.y = 0f;
         if (dir.sqrMagnitude > 0.001f)
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), 10f * Time.deltaTime);
+            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), 25f * Time.deltaTime);
 
         // El sonido va al empezar cada golpe (no al terminarlo), así suena apenas empieza a picar
         if (!golpeSonado)
@@ -348,7 +390,14 @@ public class Worker : MonoBehaviour
                 // Terminó el pilar: ya está abajo, se elimina en el momento (sin animación pendiente)
                 objetivo.TerminarHundimiento();
                 // Consigue oro y descansa antes de llevarlo
-                if (ResourceManager.Instance != null) ConseguirOro(ResourceManager.Instance.OroPorPilar());
+                var rm = ResourceManager.Instance;
+                if (rm != null)
+                {
+                    int cantidad = rm.OroPorPilar();
+                    // chanceToDobleGold % de que le toque el doble (Random.Range(0, 100) da 0..99)
+                    if (Random.Range(0, 100) < rm.chanceToDobleGold) cantidad *= 2;
+                    ConseguirOro(cantidad);
+                }
                 objetivo = null;
                 timerCooldown = cooldownAlTerminar;
                 estado = Estado.Descansando;
@@ -420,6 +469,7 @@ public class Worker : MonoBehaviour
             agent.ResetPath();
             timerLavado = ResourceManager.Instance != null ? ResourceManager.Instance.segundosLavadoOro : 3f;
             estado = Estado.Lavando;
+            if (aguaObjetivo != null) MirarHacia(aguaObjetivo.PuntoMasCercano(transform.position));
 
             // Una sola vez, al empezar a lavar
             if (AudioMaster.Instance != null)
@@ -444,7 +494,7 @@ public class Worker : MonoBehaviour
             Vector3 dir = aguaObjetivo.PuntoMasCercano(transform.position) - transform.position;
             dir.y = 0f;
             if (dir.sqrMagnitude > 0.001f)
-                transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), 10f * Time.deltaTime);
+                transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), 25f * Time.deltaTime);
         }
        
         timerLavado -= Time.deltaTime;
@@ -459,8 +509,9 @@ public class Worker : MonoBehaviour
 
     private void LimpiarCarga()
     {
-        float chance = ResourceManager.Instance.toxicWaterCount / 20;
-        if (chance > Random.Range(1,100))
+        // Random.Range(0, 100) da 0..99: es menor que 'chance' exactamente 'chance' de cada 100 veces
+        int chance = ResourceManager.Instance.ChanceMuerteTrabajador;
+        if (Random.Range(0, 100) < chance)
         {
             ResourceManager.WorkerIsDead?.Invoke();
             HandleDead();
@@ -470,6 +521,46 @@ public class Worker : MonoBehaviour
         ResourceManager.GoldHasCleaned?.Invoke();
         Material limpio = ResourceManager.Instance != null ? ResourceManager.Instance.MaterialOroLimpio : null;
         foreach (GameObject oro in oroCargado) PintarOro(oro, limpio);
+    }
+
+    // ---------- Animaciones ----------
+
+    // Elige la animación según el estado. Se llama una vez por frame al final de Update.
+    private void ActualizarAnimator()
+    {
+        if (animator == null || estado == Estado.Muerto) return;
+
+        // Caminando de verdad (no cuando está trabado o parado)
+        bool moviendose = agent.isOnNavMesh && !agent.isStopped && agent.velocity.sqrMagnitude > 0.05f;
+        bool llevaOro = oroCargado.Count > 0;
+
+        bool walk = moviendose && !llevaOro;
+        bool carrying = moviendose && llevaOro;
+        bool mining = estado == Estado.Picando;
+        bool washing = estado == Estado.Lavando;
+
+        // Los bools se mantienen para que el Animator quede coherente con sus transiciones
+        animator.SetBool(AnimWalk, walk);
+        animator.SetBool(AnimCarring, carrying);
+        animator.SetBool(AnimMining, mining);
+        animator.SetBool(AnimWashingGold, washing);
+        // Descansando, tirando el oro o buscando: ningún bool → IDLE
+
+        // Saltar directo a la animación nueva (sin pasar por IDLE, que sumaba medio segundo de demora)
+        int deseado = mining ? EstadoMining : washing ? EstadoWashing : carrying ? EstadoCarrying : walk ? EstadoWalk : EstadoIdle;
+        if (deseado != estadoAnimActual)
+        {
+            estadoAnimActual = deseado;
+            animator.CrossFadeInFixedTime(deseado, duracionTransicionAnim);
+        }
+    }
+
+    // Gira de golpe hacia un punto (sólo en el plano horizontal)
+    private void MirarHacia(Vector3 punto)
+    {
+        Vector3 dir = punto - transform.position;
+        dir.y = 0f;
+        if (dir.sqrMagnitude > 0.0001f) transform.rotation = Quaternion.LookRotation(dir);
     }
 
     // ---------- Muerte ----------
@@ -482,19 +573,28 @@ public class Worker : MonoBehaviour
         objetivo = null;
         aguaObjetivo = null;
 
-        // Quieto
+        // Quieto en el piso: se frena y se apaga el agente para que nada lo mueva
         if (agent.isOnNavMesh)
         {
             agent.isStopped = true;
             agent.ResetPath();
         }
+        agent.enabled = false;
 
         // Pierde el oro que llevaba encima (el que ya estaba volando llega igual a la pila)
         foreach (GameObject oro in oroCargado)
             if (oro != null) Destroy(oro);
         oroCargado.Clear();
 
-        // Más adelante: acá va la animación de muerte (dura 'segundosMuerte')
+        // Animación de muerte: salta directo al estado DEAD (no depende de la transición desde Any State)
+        if (animator != null)
+        {
+            animator.SetBool(AnimWalk, false);
+            animator.SetBool(AnimCarring, false);
+            animator.SetBool(AnimMining, false);
+            animator.SetBool(AnimWashingGold, false);
+            animator.CrossFadeInFixedTime(EstadoDead, duracionTransicionAnim);
+        }
         Destroy(gameObject, segundosMuerte);
     }
 
@@ -517,12 +617,40 @@ public class Worker : MonoBehaviour
             GameObject oro = rm.CrearOro(transform.position);
             if (oro == null) return;
             SetFisica(oro, false);
-            oro.transform.SetParent(transform, false);
-            oro.transform.localPosition = puntoDeCarga + Vector3.up * (separacionCarga * oroCargado.Count);
-            oro.transform.localRotation = Quaternion.identity;
+            PonerEnCarga(oro, oroCargado.Count);
             PintarOro(oro, rm.materialOroSucio);
             oroCargado.Add(oro);
         }
+    }
+
+    // Ubica el oro número 'indice' en la pila que lleva (en carryPlaceRef si hay, si no en el offset del worker)
+    private void PonerEnCarga(GameObject oro, int indice)
+    {
+        Transform t = oro.transform;
+        if (carryPlaceRef != null)
+        {
+            // Posición en el mundo y después se cuelga manteniendo su tamaño (los huesos suelen tener otra escala)
+            t.SetParent(null, true);
+            t.SetPositionAndRotation(carryPlaceRef.position + carryPlaceRef.up * (separacionCarga * indice), carryPlaceRef.rotation);
+            t.SetParent(carryPlaceRef, true);
+        }
+        else
+        {
+            t.SetParent(transform, false);
+            t.localPosition = puntoDeCarga + Vector3.up * (separacionCarga * indice);
+            t.localRotation = Quaternion.identity;
+        }
+    }
+
+    // Si se cambió el offset o la separación en el Inspector, reacomodar el oro que ya lleva
+    private void ReacomodarCargaSiCambio()
+    {
+        if (puntoDeCarga == ultimoPuntoDeCarga && Mathf.Approximately(separacionCarga, ultimaSeparacionCarga)) return;
+        ultimoPuntoDeCarga = puntoDeCarga;
+        ultimaSeparacionCarga = separacionCarga;
+
+        for (int i = 0; i < oroCargado.Count; i++)
+            if (oroCargado[i] != null) PonerEnCarga(oroCargado[i], i);
     }
 
     private void IrAEntregar()
@@ -548,6 +676,8 @@ public class Worker : MonoBehaviour
             // Cuanto más oro lleva, menos espera entre tiros (la curva y la duración de cada tiro siguen iguales)
             intervaloActual = Mathf.Min(intervaloTiro, tiempoMaximoDescarga / Mathf.Max(1, oroCargado.Count));
             estado = Estado.TirandoOro;
+            tirosConSonido = 0;
+            MirarHacia(PuntoEntrega());
         }
     }
 
@@ -557,7 +687,7 @@ public class Worker : MonoBehaviour
         Vector3 dir = PuntoEntrega() - transform.position;
         dir.y = 0f;
         if (dir.sqrMagnitude > 0.001f)
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), 10f * Time.deltaTime);
+            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), 25f * Time.deltaTime);
 
         timerTiro -= Time.deltaTime;
         if (timerTiro > 0f) return;
@@ -587,7 +717,9 @@ public class Worker : MonoBehaviour
         Vector3 hasta = PuntoEntrega() + new Vector3(r.x, 0f, r.y);
         hasta.y = AlturaPila(hasta);
 
-        oroEnVuelo.Add(new OroEnVuelo { obj = oro, desde = oro.transform.position, hasta = hasta, t = 0f });
+        bool conSonido = tirosConSonido < maxSonidosPorDescarga;
+        tirosConSonido++;
+        oroEnVuelo.Add(new OroEnVuelo { obj = oro, desde = oro.transform.position, hasta = hasta, t = 0f, conSonido = conSonido });
     }
 
     private void AnimarOroEnVuelo()
@@ -617,7 +749,7 @@ public class Worker : MonoBehaviour
         v.obj.transform.position = v.hasta;
         // Al caer recupera la física, así se acomoda solo en la pila
         SetFisica(v.obj, true);
-        if (ResourceManager.Instance != null) ResourceManager.Instance.OroEntregado(v.obj);
+        if (ResourceManager.Instance != null) ResourceManager.Instance.OroEntregado(v.obj, v.conSonido);
     }
 
     private Vector3 PuntoEntrega()

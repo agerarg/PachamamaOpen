@@ -7,6 +7,7 @@ public class Quest : MonoBehaviour
     public Sprite questComplete;
     public Sprite questIncomplete;
 
+    public static Action AllQuestComplete;
 
     public Image quest1;
     public Image quest2;
@@ -48,6 +49,9 @@ public class Quest : MonoBehaviour
         target.sprite = set;
         if (AudioMaster.Instance != null)
             AudioMaster.Instance.TriggerSound(AudioMaster.SoundType.questComplete, Vector3.zero);
+
+        if(quest1.sprite == questComplete && quest2.sprite == questComplete && quest3.sprite == questComplete && quest4.sprite == questComplete)
+            AllQuestComplete?.Invoke();
     }
 
     private void OnWorkersChange(int obj)

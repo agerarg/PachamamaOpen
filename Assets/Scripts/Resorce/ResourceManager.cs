@@ -87,12 +87,16 @@ public class ResourceManager : MonoBehaviour
 
     public int CostoDeTrabajador = 5;
     public int BonesCounter = 0;
-    [Tooltip("Segundos sin huesos después de encontrar uno (cuenta tiempo de juego: no corre mientras se elige el perk).")]
-    public float cooldownHuesos = 30f;
     /// <summary>Oro total entregado en la pila.</summary>
-    public int Oro { get; private set; }
+    public int Oro;
     private int workersCount = 1;
     public float toxicWaterCount = 0;
+
+    /// <summary>
+    /// % de chance de que muera un worker al lavar: toxinas / 20, truncado (sin redondear).
+    /// 19 → 0%, 25 → 1%, 39 → 1%, 40 → 2%...
+    /// </summary>
+    public int ChanceMuerteTrabajador => Mathf.FloorToInt(toxicWaterCount / 20f);
     public float workerToxicAdd = 1f;
 
     public int costoDeLimpiarRoxinas = 10;
@@ -104,6 +108,7 @@ public class ResourceManager : MonoBehaviour
     /// <summary>Se dispara una vez por segundo (cualquier script se puede suscribir).</summary>
     public event Action Segundo;
 
+    public int chanceToDobleGold = 0;
     // Pilares desactivados esperando volver, con los segundos que les faltan
     private class PilarEnEspera { public Pilar pilar; public int segundos; }
     private readonly List<PilarEnEspera> pilaresEnEspera = new List<PilarEnEspera>();
@@ -307,7 +312,7 @@ public class ResourceManager : MonoBehaviour
     }
 
     /// <summary>Lo llama el worker cuando un oro cae en la pila.</summary>
-    public void OroEntregado(GameObject oro)
+    public void OroEntregado(GameObject oro, bool conSonido = true)
     {
         if (oro != null)
         {
@@ -317,7 +322,8 @@ public class ResourceManager : MonoBehaviour
         }
         Oro++;
         OroCambiado?.Invoke(Oro);
-        AudioMaster.Instance.TriggerSound(AudioMaster.SoundType.goldGain, puntoDeEntrega);
+        if (conSonido && AudioMaster.Instance != null)
+            AudioMaster.Instance.TriggerSound(AudioMaster.SoundType.goldGain, puntoDeEntrega);
         UpdateGold();
     }
     /// <summary>
@@ -407,15 +413,14 @@ public class ResourceManager : MonoBehaviour
             return hit.point.y;
         return puntoDeEntrega.y;
     }
-    public void AddWorkerMinGold()
+    public void AddWorkerMinGold(int min)
     {
-        oroMinimo += 1;
-        if(oroMinimo > oroMaximo)
-            oroMaximo = oroMinimo;
+        oroMinimo += min;
+        oroMaximo += min;
     }
-    public void AddWorkerMaxGold()
+    public void AddWorkerMaxGold(int max)
     {
-               oroMaximo += 2;
+               oroMaximo += max;
     }
     public void AddWokerSpeed()
     {
@@ -511,5 +516,10 @@ public class ResourceManager : MonoBehaviour
         {
             PlayerHasNoGold?.Invoke(CostoDeTrabajador);
         }
+    }
+
+    public void ChanceDobleOroAdd(int value)
+    {
+        chanceToDobleGold += value;
     }
 }

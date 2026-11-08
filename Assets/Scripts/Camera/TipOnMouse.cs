@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using HeyHeyThere.PSXLookFree;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -25,6 +26,7 @@ public class TipOnMouse : MonoBehaviour
     public Vector2 offsetMouseUI = new Vector2(16f, -16f);
 
     private Camera cam;
+    private PSXScreen psx; // si la cámara usa el filtro PSX, dibuja en baja resolución y hay que convertir posiciones
     private Worker seleccionado;
     private string textoActual;
     private Vector2 posAlApretar;
@@ -168,7 +170,9 @@ public class TipOnMouse : MonoBehaviour
         if (cam == null) cam = Camera.main;
         if (cam == null) return null;
 
-        Ray ray = cam.ScreenPointToRay(posPantalla);
+        if (psx == null) psx = cam.GetComponent<PSXScreen>();
+        Vector3 posCamara = psx != null && psx.enabled ? psx.ScreenToCamera(posPantalla) : (Vector3)posPantalla;
+        Ray ray = cam.ScreenPointToRay(posCamara);
         if (Physics.Raycast(ray, out RaycastHit hit, 1000f))
             return hit.collider.GetComponentInParent<Worker>();
         return null;
@@ -185,6 +189,8 @@ public class TipOnMouse : MonoBehaviour
 
         Vector3 pantalla = cam.WorldToScreenPoint(posMundo);
         if (pantalla.z < 0f) return false;
+        if (psx == null) psx = cam.GetComponent<PSXScreen>();
+        if (psx != null && psx.enabled) pantalla = psx.CameraToScreen(pantalla);
 
         PosicionarEnPantalla((Vector2)pantalla + offsetPantalla);
         return true;

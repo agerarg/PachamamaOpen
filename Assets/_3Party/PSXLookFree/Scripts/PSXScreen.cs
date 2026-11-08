@@ -105,5 +105,18 @@ namespace HeyHeyThere.PSXLookFree
             var uv = image.uvRect.min + new Vector2(screen.x / Screen.width, screen.y / Screen.height) * image.uvRect.size;
             return new Vector3(uv.x * picture.width, uv.y * picture.height, screen.z);
         }
+
+        /// <summary>
+        /// Lo inverso de ScreenToCamera: una posición en el picture de la cámara (lo que devuelve
+        /// Camera.WorldToScreenPoint) pasada a posición en la pantalla. (Agregado propio, no del paquete original.)
+        /// </summary>
+        public Vector3 CameraToScreen(Vector3 cameraPos)
+        {
+            if (picture == null)
+                return cameraPos;
+            var uv = new Vector2(cameraPos.x / picture.width, cameraPos.y / picture.height);
+            var screenUv = (uv - image.uvRect.min) / image.uvRect.size;
+            return new Vector3(screenUv.x * Screen.width, screenUv.y * Screen.height, cameraPos.z);
+        }
     }
 }

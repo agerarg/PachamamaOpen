@@ -18,7 +18,7 @@ namespace HeyHeyThere.PixelUIFantasyFree
         void OnEnable()
         {
             scaler = GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referencePixelsPerUnit = 100;
             Update();
         }
